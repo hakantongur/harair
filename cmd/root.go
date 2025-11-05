@@ -33,7 +33,7 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&cfgPath, "config", "config.go", "Path to config.go")
+	rootCmd.PersistentFlags().StringVar(&cfgPath, "config", "config.yaml", "Path to config.yaml")
 	rootCmd.PersistentFlags().StringVar(&rulesPath, "rules", "rules.yaml", "Path to rules.yaml")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
 }

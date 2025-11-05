@@ -1,0 +1,17 @@
+auth_store: ".harair/auth.json"
+default_timeout_sec: 120
+skopeo_path: "docker"
+helm_path: "helm"
+
+registries:
+  harbor1:
+    api_url: "http://localhost:8081"   # mock Harbor API
+    registry_url: "reg1:5000"          # real registry (inside docker network)
+    insecure: true
+  harbor2:
+    api_url: "http://localhost:8082"
+    registry_url: "reg2:5000"
+    insecure: true
+  harbor3:
+    url: "http://localhost:8083"
+    insecure: true

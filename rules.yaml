@@ -1,0 +1,23 @@
+rule_sets:
+  core-images:
+    include:
+      - type: "image"
+        from: "harbor1"
+        project: "uruk"
+        repo: "aed/*"
+        tags: ["latest", "v*"]
+
+  helm-charts:
+    include:
+      - type: "helm"
+        from: "harbor1"
+        project: "charts"
+        name: "uruk-admin"
+        versions: ["1.2.*", "1.3.0"]
+projects:
+  - name: demo
+    includes:
+      - "demo-repo"
+    tags:
+      - "v1.*"
+      - "latest"
