@@ -11,7 +11,7 @@ import (
 )
 
 type Client struct {
-	Base     string // full base, e.g. http://localhost:8081 or https://harbor1.local
+	Base     string
 	User     string
 	Pass     string
 	Insecure bool
@@ -23,18 +23,17 @@ func normalizeBase(base string, insecure bool) string {
 	if strings.HasPrefix(b, "http://") || strings.HasPrefix(b, "https://") {
 		return b
 	}
-	// If no scheme provided:
 	if insecure {
-		return "http://" + b // mock/local typically http
+		return "http://" + b
 	}
-	return "https://" + b // default secure for real Harbor
+	return "https://" + b
 }
 
 func New(base, user, pass string, insecure bool) *Client {
 	nb := normalizeBase(base, insecure)
 
 	tr := http.DefaultTransport.(*http.Transport).Clone()
-	// If user explicitly chooses https with self-signed certs, allow skipping verification
+	// allow self-signed when explicitly marked insecure over https
 	if strings.HasPrefix(nb, "https://") && insecure {
 		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec
 	}
@@ -51,30 +50,28 @@ func New(base, user, pass string, insecure bool) *Client {
 	}
 }
 
-type Repo struct {
-	Name string `json:"name"`
-}
+// --- small HTTP helper ---
 
-func (c *Client) ListRepos(project string) ([]Repo, error) {
-	u := fmt.Sprintf("%s/api/v2.0/projects/%s/repositories?page=1&page_size=5000",
-		c.Base, url.PathEscape(project))
+func (c *Client) getJSON(u string, out any) error {
 	req, _ := http.NewRequest(http.MethodGet, u, nil)
 	if c.User != "" || c.Pass != "" {
 		req.SetBasicAuth(c.User, c.Pass)
 	}
 	resp, err := c.httpc.Do(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("harbor repos: status %s", resp.Status)
+		return fmt.Errorf("harbor GET %s: status %s", u, resp.Status)
 	}
-	var repos []Repo
-	if err := json.NewDecoder(resp.Body).Decode(&repos); err != nil {
-		return nil, err
-	}
-	return repos, nil
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// --- API shapes we use ---
+
+type Repository struct {
+	Name string `json:"name"` // "project/repo" or just "repo"
 }
 
 type Tag struct {
@@ -86,24 +83,48 @@ type Artifact struct {
 	Tags   []Tag  `json:"tags"`
 }
 
+// --- API methods ---
+
+func (c *Client) ListRepos(project string) ([]Repository, error) {
+	const pageSize = 100
+	page := 1
+	var all []Repository
+
+	for {
+		var chunk []Repository
+		u := fmt.Sprintf("%s/api/v2.0/projects/%s/repositories?page=%d&page_size=%d",
+			c.Base, url.PathEscape(project), page, pageSize)
+
+		if err := c.getJSON(u, &chunk); err != nil {
+			return nil, err
+		}
+		all = append(all, chunk...)
+		if len(chunk) < pageSize {
+			break
+		}
+		page++
+	}
+	return all, nil
+}
+
 func (c *Client) ListArtifacts(project, repo string) ([]Artifact, error) {
-	u := fmt.Sprintf("%s/api/v2.0/projects/%s/repositories/%s/artifacts?page=1&page_size=200",
-		c.Base, url.PathEscape(project), url.PathEscape(repo))
-	req, _ := http.NewRequest(http.MethodGet, u, nil)
-	if c.User != "" || c.Pass != "" {
-		req.SetBasicAuth(c.User, c.Pass)
+	const pageSize = 100
+	page := 1
+	var all []Artifact
+
+	for {
+		var chunk []Artifact
+		u := fmt.Sprintf("%s/api/v2.0/projects/%s/repositories/%s/artifacts?page=%d&page_size=%d&with_tag=true",
+			c.Base, url.PathEscape(project), url.PathEscape(repo), page, pageSize)
+
+		if err := c.getJSON(u, &chunk); err != nil {
+			return nil, err
+		}
+		all = append(all, chunk...)
+		if len(chunk) < pageSize {
+			break
+		}
+		page++
 	}
-	resp, err := c.httpc.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("harbor artifacts: status %s", resp.Status)
-	}
-	var arts []Artifact
-	if err := json.NewDecoder(resp.Body).Decode(&arts); err != nil {
-		return nil, err
-	}
-	return arts, nil
+	return all, nil
 }

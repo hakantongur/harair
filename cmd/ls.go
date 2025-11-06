@@ -30,7 +30,7 @@ var lsCmd = &cobra.Command{
 		if !ok {
 			return fmt.Errorf("registry %q not found in %s", reg, cfgPath)
 		}
-		user, pass, err := getCreds(cfg, reg)
+		user, pass, _ := getCreds(cfg, reg)
 		if err != nil {
 			// Mocks don’t require auth—fall back to blanks if no creds stored yet
 			user, pass = "", ""

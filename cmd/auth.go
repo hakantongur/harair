@@ -28,24 +28,12 @@ func readAuthStore(p string) (authMap, error) {
 	return authMap{}, nil
 }
 
-func writeAuthStore(p string, m authMap) error {
-	if err := config.EnsureDir(p); err != nil {
-		return err
-	}
-	b, _ := json.MarshalIndent(m, "", "  ")
-	return os.WriteFile(p, b, 0o600)
-}
-
-func getCreds(cfg *config.Config, name string) (string, string, error) {
-	m, err := readAuthStore(cfg.AuthStore)
-	if err != nil {
-		return "", "", err
-	}
-	c, ok := m[name]
+func getCreds(cfg *config.Config, name string) (string, string, bool) {
+	r, ok := cfg.Registries[name]
 	if !ok {
-		return "", "", fmt.Errorf("no credentials for %s, run: harair login %s", name, name)
+		return "", "", false
 	}
-	return c.Username, c.Password, nil
+	return r.Username, r.Password, true
 }
 
 func authStorePathHomeFallback(p string) (string, error) {
