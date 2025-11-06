@@ -109,22 +109,57 @@ func (c *Client) ListRepos(project string) ([]Repository, error) {
 
 func (c *Client) ListArtifacts(project, repo string) ([]Artifact, error) {
 	const pageSize = 100
-	page := 1
+
+	// helpers
+	enc1 := func(s string) string { return url.PathEscape(s) }                 // "/" -> %2F
+	enc2 := func(s string) string { return url.PathEscape(url.PathEscape(s)) } // "/" -> %252F
+
+	// Build the 4 candidate URLs in order
+	// 1) project-scoped, single-encoded repository_name
+	u1 := fmt.Sprintf("%s/api/v2.0/projects/%s/repositories/%s/artifacts?page=1&page_size=%d&with_tag=true",
+		c.Base, url.PathEscape(project), enc1(repo), pageSize)
+
+	// 2) global, single-encoded full name "project/repo"
+	full := project + "/" + repo
+	u2 := fmt.Sprintf("%s/api/v2.0/repositories/%s/artifacts?page=1&page_size=%d&with_tag=true",
+		c.Base, enc1(full), pageSize)
+
+	// 3) project-scoped, double-encoded repository_name
+	u3 := fmt.Sprintf("%s/api/v2.0/projects/%s/repositories/%s/artifacts?page=1&page_size=%d&with_tag=true",
+		c.Base, url.PathEscape(project), enc2(repo), pageSize)
+
+	// 4) global, double-encoded full name
+	u4 := fmt.Sprintf("%s/api/v2.0/repositories/%s/artifacts?page=1&page_size=%d&with_tag=true",
+		c.Base, enc2(full), pageSize)
+
+	candidates := []string{u1, u2, u3, u4}
+	var lastErr error
 	var all []Artifact
 
-	for {
-		var chunk []Artifact
-		u := fmt.Sprintf("%s/api/v2.0/projects/%s/repositories/%s/artifacts?page=%d&page_size=%d&with_tag=true",
-			c.Base, url.PathEscape(project), url.PathEscape(repo), page, pageSize)
+	for _, u := range candidates {
+		// page through results for the chosen URL base
+		page := 1
+		all = all[:0]
+		for {
+			var chunk []Artifact
+			// replace the page query in-place
+			pageURL := strings.Replace(u, "page=1", fmt.Sprintf("page=%d", page), 1)
+			if err := c.getJSON(pageURL, &chunk); err != nil {
+				lastErr = err
+				all = nil
+				break
+			}
+			all = append(all, chunk...)
+			if len(chunk) < pageSize {
+				return all, nil
+			}
+			page++
+		}
+		// try next candidate if this one failed on first page
+	}
 
-		if err := c.getJSON(u, &chunk); err != nil {
-			return nil, err
-		}
-		all = append(all, chunk...)
-		if len(chunk) < pageSize {
-			break
-		}
-		page++
+	if lastErr != nil {
+		return nil, lastErr
 	}
 	return all, nil
 }
